@@ -2,6 +2,7 @@ package bitutil
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -92,4 +93,18 @@ func (bb *BitBuffer) ReadBit() (bool, error) {
 // Return Bytes
 func (bb *BitBuffer) Bytes() []byte {
 	return bb.data
+}
+
+func (bb *BitBuffer) Reset() {
+	bb.data = make([]byte, 0)
+}
+
+func (bb *BitBuffer) Reverse() {
+	for i, j := 0, len(bb.data)-1; i < j; i, j = i+1, j-1 {
+		bb.data[i], bb.data[j] = bb.data[j], bb.data[i]
+	}
+}
+
+func (bb *BitBuffer) Sort(SortFunc func(i, j int) bool) {
+	sort.Slice(bb.data, SortFunc)
 }

@@ -1,14 +1,18 @@
 package bitutil
 
 import (
+	"errors"
 	"fmt"
-	"sort"
-	"strconv"
+)
+
+var (
+	ErrNotBit        error = errors.New("input is not bit")
+	ErrBufferEmpty   error = errors.New("buffer is empty")
+	ErrBufferNotFull error = errors.New("bit cannot turn to byte not enough bits")
 )
 
 type BitBuffer struct {
-	data   []byte
-	offset uint8
+	data []bool
 }
 
 // Default value: -1 will convert to preallocate is 64
@@ -17,8 +21,7 @@ func NewBitBuffer(preallocate int) *BitBuffer {
 		preallocate = 64
 	}
 	return &BitBuffer{
-		data:   make([]byte, 0, preallocate), // Preallocate capacity for performance
-		offset: 0,
+		data: make([]bool, 0, preallocate), // Preallocate capacity for performance
 	}
 }
 
@@ -29,82 +32,77 @@ func (bb *BitBuffer) WriteBitBoolArr(bits []bool) {
 }
 
 func (bb *BitBuffer) WriteBitBool(bit bool) {
-	if bb.offset == 0 {
-		bb.data = append(bb.data, 0)
-	}
-
-	if bit {
-		bb.data[len(bb.data)-1] |= 1 << bb.offset
-	}
-
-	bb.offset = (bb.offset + 1) % 8
+	bb.data = append(bb.data, bit)
 }
 
-func (bb *BitBuffer) WriteBitUint8Arr(bits []uint8) {
+func (bb *BitBuffer) WriteBitUint8Arr(bits []uint8) error {
 	for _, v := range bits {
-		bb.WriteBitUint8(v)
+		err := bb.WriteBitUint8(v)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (bb *BitBuffer) WriteBitUint8(bit uint8) {
-	if bb.offset == 0 {
-		bb.data = append(bb.data, 0)
+func (bb *BitBuffer) WriteBitUint8(bit uint8) error {
+	if bit != 0 && bit != 1 {
+		return ErrNotBit
 	}
 
-	if bit == 1 {
-		bb.data[len(bb.data)-1] |= 1 << bb.offset
-	}
-
-	bb.offset = (bb.offset + 1) % 8
+	bb.data = append(bb.data, bit == 1)
+	return nil
 }
 
-func (bb *BitBuffer) WriteBitsString(bits string) ([]byte, error) {
-	var result []byte
-
+func (bb *BitBuffer) WriteBitsString(bits string) error {
 	for _, char := range bits {
 		if char != '0' && char != '1' {
-			return nil, fmt.Errorf("invalid input: string contains characters other than '0' and '1'")
+			return fmt.Errorf("invalid input: string contains characters other than '0' and '1'")
 		}
 
-		bit, err := strconv.ParseUint(string(char), 2, 8)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, byte(bit))
+		bb.WriteBitBool(char == '1')
 	}
-
-	return result, nil
+	return nil
 }
 
 func (bb *BitBuffer) ReadBit() (bool, error) {
 	if len(bb.data) == 0 {
 		return false, fmt.Errorf("bit buffer is empty")
 	}
+	firstBit := bb.data[0]
+	bb.data = bb.data[1:]
 
-	bb.offset = (bb.offset + 1) % 8
-	if bb.offset == 0 {
-		bb.data = bb.data[1:]
-	}
-
-	return (bb.data[0]>>bb.offset)&1 == 1, nil
+	return firstBit, nil
 }
 
 // Return Bytes
-func (bb *BitBuffer) Bytes() []byte {
-	return bb.data
+func (bb *BitBuffer) Bytes() ([]byte, error) {
+	if len(bb.data)%8 != 0 {
+		return nil, ErrBufferNotFull
+	}
+
+	byteArray := make([]byte, len(bb.data)/8)
+
+	for i, bit := range bb.data {
+		byteIndex := i / 8
+		bitIndex := uint(7 - (i % 8))
+
+		if bit {
+			byteArray[byteIndex] |= 1 << bitIndex
+		}
+	}
+
+	return byteArray, nil
 }
 
+// Reset Buffer
 func (bb *BitBuffer) Reset() {
-	bb.data = make([]byte, 0)
+	bb.data = make([]bool, 0)
 }
 
+// Reverse the buffers slice
 func (bb *BitBuffer) Reverse() {
 	for i, j := 0, len(bb.data)-1; i < j; i, j = i+1, j-1 {
 		bb.data[i], bb.data[j] = bb.data[j], bb.data[i]
 	}
-}
-
-func (bb *BitBuffer) Sort(SortFunc func(i, j int) bool) {
-	sort.Slice(bb.data, SortFunc)
 }
